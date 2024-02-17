@@ -12,9 +12,11 @@
 
                             <a href="{{ route('home', $friend['id']) }}"
                                 class="list-group-item list-group-item-action border-0 border-bottom mb-3 pb-2">
-                                @if ($friend['unread_messages'] > 0)
-                                <div class="badge bg-success float-right">{{ $friend['unread_messages'] }}</div>
-                                @endif
+                                <div id="unread-count-{{ $friend['id'] }}">
+                                    @if ($friend['unread_messages'] > 0)
+                                    <div class="badge bg-success float-right">{{ $friend['unread_messages'] }}</div>
+                                    @endif
+                                </div>
                                 <div class="d-flex align-items-start">
                                     <img src="https://ui-avatars.com/api/?name={{ $friend['name'] }}"
                                         class="rounded-circle mr-1" alt="Vanessa Tucker" width="40" height="40" />
@@ -44,7 +46,7 @@
                                     </div>
                                     <div class="flex-grow-1 pl-3">
                                         <strong>{{ $otherUser->name }}</strong>
-                                        <div class="text-muted small"><em>Typing...</em></div>
+                                        <div class="text-muted small" id="typing-in"></div>
                                     </div>
                                 </div>
                             </div>
@@ -104,6 +106,7 @@
 
 @section('scripts')
 <script>
+    var tout;
     $(function () {
         const user_id = "{{ Auth::id() }}"
         const other_user_id = "{{ ($otherUser) ? $otherUser->id : '' }}";
@@ -130,7 +133,15 @@
             }
         })
         socket.on('user_connected', function (data) {
-            $(`#status_${data}`).html('<span class="fa fa-circle chat-online"></span> Online')
+            $(`#status_${data.id}`).html('<span class="fa fa-circle chat-online"></span> Online')
+            Push.create("Hello", {
+                body: `${data.name} is online`,
+                timeout: 4000,
+                onClick: function () {
+                    window.focus();
+                    this.close();
+                }
+            })
         });
         socket.on('user_disconnected', function (data) {
             $(`#status_${data}`).html('<span class="fa fa-circle chat-offline"></span> Offline')
@@ -139,6 +150,7 @@
             if ((data.user_id == user_id && data.other_user_id == other_user_id) || (data.user_id ===
                     other_user_id && data.other_user_id == user_id)) {
                 if (data.user_id == user_id) {
+
                     // note here we use var and not const since const is not working
                     var html = `<div class="chat-message-right pb-4">
                         <div>
@@ -153,6 +165,7 @@
                                 </div>
                         </div>`
                 } else {
+                    socket.emit('read_message', data.id);
                     var html = `<div class="chat-message-left pb-4">
                         <div>
                             <img src="https://ui-avatars.com/api?name=${data.otherUserName}"
@@ -170,10 +183,37 @@
                 $(".chat-messages").animate({
                     scrollTop: $(".chat-messages").prop("scrollHeight")
                 }, 1000);
-                socket.emit('read_message', data.id);
+
+            } else {
+                $(`#unread-count-${data.user_id}`).html(
+                    `<div class="badge bg-success float-right">${data.unread_messages}</div>`);
             }
         });
+        socket.on('user_typing', function (data) {
+            if (data.user_id == other_user_id) {
+                $('#typing-in').html("<em class='text-success font-weight-bold'>Typing...</em>");
+                clearMyTimeout()
+                clearTyping()
+            }
+        })
+
+        $('#message-input').on('keyup', function () {
+            socket.emit('user_typing', {
+                user_id,
+                other_user_id
+            });
+        })
     });
+
+    function clearTyping() {
+        tout = setTimeout(function () {
+            $("#typing-in").html('')
+        }, 3000);
+    }
+
+    function clearMyTimeout() {
+        clearTimeout(tout)
+    }
 
 </script>
 @endsection
